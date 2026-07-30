@@ -11,6 +11,11 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "NoteNext - Ephemeral Encrypted Pastebin",
   description: "Zero-knowledge end-to-end encrypted ephemeral note sharing platform.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

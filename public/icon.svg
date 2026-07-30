@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#242424"/>
+      <stop offset="100%" stop-color="#121212"/>
+    </linearGradient>
+    <linearGradient id="amberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffb74d"/>
+      <stop offset="50%" stop-color="#ff9800"/>
+      <stop offset="100%" stop-color="#f57c00"/>
+    </linearGradient>
+    <linearGradient id="accentGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff9800" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#ff9800" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Rounded Container -->
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="url(#bgGrad)" stroke="#3a3a3a" stroke-width="12"/>
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="url(#accentGlow)"/>
+
+  <!-- Document Sheet -->
+  <path d="M136 116 C136 102.745 146.745 92 160 92 H296 L376 172 V396 C376 409.255 365.255 420 352 420 H160 C146.745 420 136 409.255 136 396 V116 Z" fill="#181818" stroke="url(#amberGrad)" stroke-width="16" stroke-linejoin="round"/>
+
+  <!-- Folded Corner -->
+  <path d="M296 92 V172 H376" fill="#2a2a2a" stroke="url(#amberGrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Code Brackets & Forward Slash (< / >) -->
+  <!-- Bracket < -->
+  <path d="M205 220 L175 250 L205 280" stroke="url(#amberGrad)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Slash / -->
+  <path d="M266 210 L242 290" stroke="#ffffff" stroke-width="16" stroke-linecap="round"/>
+  
+  <!-- Bracket > -->
+  <path d="M305 220 L335 250 L305 280" stroke="url(#amberGrad)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Encrypted Lock Badge -->
+  <rect x="286" y="316" width="76" height="58" rx="12" fill="url(#amberGrad)"/>
+  <path d="M302 316 V298 C302 285.85 311.85 276 324 276 C336.15 276 346 285.85 346 298 V316" stroke="url(#amberGrad)" stroke-width="12" stroke-linecap="round" fill="none"/>
+  <circle cx="324" cy="340" r="6" fill="#121212"/>
+  <path d="M324 346 V358" stroke="#121212" stroke-width="5" stroke-linecap="round"/>
+</svg>

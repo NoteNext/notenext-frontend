@@ -269,7 +269,8 @@ export default function EditPastePage(props: EditPageProps) {
     <div className="flex flex-col flex-1 h-full w-full bg-[#212121] overflow-hidden select-none">
       {/* Header */}
       <header className="flex w-full justify-between items-center py-3 px-6 bg-[#1a1a1a] border-b border-zinc-800">
-        <a href="/" className="hover:opacity-90">
+        <a href="/" className="flex items-center gap-2.5 hover:opacity-90">
+          <img src="/icon.svg" alt="NoteNext Logo" className="h-7 w-7 rounded-sm" />
           <span className="font-bold text-xl tracking-tight">
             <span className="text-[#ff9800]">&lt;Note</span>Next/&gt;
           </span>
