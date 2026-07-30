@@ -18,6 +18,15 @@ const editTokenKey = (shareId: string) => `nn_edit_token_${shareId}`;
 export function saveEditToken(shareId: string, token: string) {
   if (typeof window === 'undefined' || !token) return;
   localStorage.setItem(editTokenKey(shareId), token);
+  const created = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
+  if (!created.includes(shareId)) {
+    created.push(shareId);
+    localStorage.setItem('nn_created_notes', JSON.stringify(created));
+  }
+}
+
+export function saveDeleteToken(shareId: string, token: string) {
+  if (typeof window === 'undefined' || !token) return;
   localStorage.setItem(deleteTokenKey(shareId), token);
   const created = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
   if (!created.includes(shareId)) {
@@ -31,10 +40,20 @@ export function getEditToken(shareId: string): string | null {
   return localStorage.getItem(editTokenKey(shareId)) || localStorage.getItem(deleteTokenKey(shareId));
 }
 
+export function getDeleteToken(shareId: string): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(deleteTokenKey(shareId)) || localStorage.getItem(editTokenKey(shareId));
+}
+
 export function clearEditToken(shareId: string) {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(editTokenKey(shareId));
+}
+
+export function clearDeleteToken(shareId: string) {
+  if (typeof window === 'undefined') return;
   localStorage.removeItem(deleteTokenKey(shareId));
+  localStorage.removeItem(editTokenKey(shareId));
   const created = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
   localStorage.setItem(
     'nn_created_notes',
@@ -42,23 +61,11 @@ export function clearEditToken(shareId: string) {
   );
 }
 
-export function saveDeleteToken(shareId: string, token: string) {
-  saveEditToken(shareId, token);
-}
-
-export function getDeleteToken(shareId: string): string | null {
-  return getEditToken(shareId);
-}
-
 export function isCreator(shareId: string): boolean {
   if (typeof window === 'undefined') return false;
   if (localStorage.getItem(editTokenKey(shareId)) || localStorage.getItem(deleteTokenKey(shareId))) return true;
   const created = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
   return created.includes(shareId);
-}
-
-export function clearDeleteToken(shareId: string) {
-  clearEditToken(shareId);
 }
 
 // Fetch a note directly from the backend.
@@ -81,7 +88,6 @@ export async function updateNote(
 
   const body: Record<string, any> = {
     editToken: token,
-    deleteToken: token,
   };
   if (payload.ciphertext !== undefined) body.ciphertext = payload.ciphertext;
   if (payload.iv !== undefined) body.iv = payload.iv;
@@ -91,11 +97,7 @@ export async function updateNote(
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'X-Edit-Token': token,
-      'X-Delete-Token': token,
       'x-edit-token': token,
-      'x-delete-token': token,
-      accept: '*/*',
     },
     body: JSON.stringify(body),
   });

@@ -172,10 +172,12 @@ export default function CreatePastePage() {
 
       const note = await response.json();
 
-      // Store the edit/delete token locally so the creator can edit or delete the note later.
-      const creatorToken = note.editToken || note.deleteToken;
-      if (creatorToken) {
-        saveEditToken(note.shareId, creatorToken);
+      // Store the edit and delete tokens locally so the creator can edit or delete the note later.
+      if (note.editToken) {
+        saveEditToken(note.shareId, note.editToken);
+      }
+      if (note.deleteToken) {
+        saveDeleteToken(note.shareId, note.deleteToken);
       }
 
       showToast('Note shared and link copied!');
