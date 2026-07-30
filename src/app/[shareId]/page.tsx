@@ -428,14 +428,15 @@ export default function ViewPastePage(props: PageProps) {
     try {
       const hash = window.location.hash;
       const hexKey = hash && hash.length > 1 ? hash.substring(1) : null;
+      const activeKey = hexKey || (enteredKey ? enteredKey.trim().replace(/^#/, '') : null);
 
       let payload: { ciphertext?: string; iv?: string; content?: string; editToken?: string } = {
         editToken: token,
       };
 
-      if (hexKey && rawNote?.ciphertext) {
+      if (activeKey && rawNote?.ciphertext) {
         // Encrypted note mode
-        const cryptoKey = await importKey(hexKey);
+        const cryptoKey = await importKey(activeKey);
         const dataToEncrypt = JSON.stringify({
           content: editContent,
           title: editTitle.trim() || 'Untitled Note',
