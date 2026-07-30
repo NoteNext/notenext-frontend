@@ -7,7 +7,7 @@ import { importKey, decryptData, encryptData } from '@/lib/crypto';
 import { mapLanguage } from '@/lib/syntax';
 import { 
   fetchNote, updateNote, isCreator as checkIsCreator, 
-  getEditToken, saveEditToken 
+  getNoteToken, saveNoteToken 
 } from '@/lib/api';
 
 const LANGUAGES = [
@@ -50,7 +50,7 @@ export default function EditPastePage(props: EditPageProps) {
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'error' } | null>(null);
 
   const [promptForToken, setPromptForToken] = useState(false);
-  const [editTokenInput, setEditTokenInput] = useState('');
+  const [noteTokenInput, setNoteTokenInput] = useState('');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -95,7 +95,7 @@ export default function EditPastePage(props: EditPageProps) {
         const hash = window.location.hash;
         const hexKey = hash && hash.length > 1 ? hash.substring(1) : null;
 
-        const storedToken = getEditToken(shareId);
+        const storedToken = getNoteToken(shareId);
         if (!storedToken && !checkIsCreator(shareId)) {
           setPromptForToken(true);
         }
@@ -158,8 +158,8 @@ export default function EditPastePage(props: EditPageProps) {
 
   const handleConfirmToken = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editTokenInput.trim()) return;
-    saveEditToken(shareId, editTokenInput.trim());
+    if (!noteTokenInput.trim()) return;
+    saveNoteToken(shareId, noteTokenInput.trim());
     setPromptForToken(false);
   };
 
@@ -169,7 +169,7 @@ export default function EditPastePage(props: EditPageProps) {
       return;
     }
 
-    const token = getEditToken(shareId) || editTokenInput.trim();
+    const token = getNoteToken(shareId) || noteTokenInput.trim();
     if (!token) {
       setPromptForToken(true);
       return;
@@ -182,8 +182,8 @@ export default function EditPastePage(props: EditPageProps) {
       const hash = window.location.hash;
       const hexKey = hash && hash.length > 1 ? hash.substring(1) : null;
 
-      let payload: { ciphertext?: string; iv?: string; content?: string; editToken?: string } = {
-        editToken: token,
+      let payload: { ciphertext?: string; iv?: string; content?: string; noteToken?: string } = {
+        noteToken: token,
       };
 
       if (hexKey && rawNote?.ciphertext) {
@@ -215,7 +215,7 @@ export default function EditPastePage(props: EditPageProps) {
         throw new Error(errData.error || `Failed to update note (HTTP ${res.status})`);
       }
 
-      saveEditToken(shareId, token);
+      saveNoteToken(shareId, token);
       showToast('Note updated successfully!');
       setTimeout(() => {
         router.push(`/${shareId}${window.location.hash}`);
@@ -236,7 +236,7 @@ export default function EditPastePage(props: EditPageProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editContent, editTitle, editLanguage, editTokenInput, isSaving]);
+  }, [editContent, editTitle, editLanguage, noteTokenInput, isSaving]);
 
   if (loading) {
     return (
@@ -344,9 +344,9 @@ export default function EditPastePage(props: EditPageProps) {
             <div className="w-12 h-12 bg-[#ff9800]/10 border border-[#ff9800] rounded-full flex items-center justify-center mx-auto mb-4">
               <Pencil className="h-5 w-5 text-[#ff9800]" />
             </div>
-            <h2 className="text-[#ff9800] font-bold text-base text-center mb-2">EDIT TOKEN REQUIRED</h2>
+            <h2 className="text-[#ff9800] font-bold text-base text-center mb-2">NOTE TOKEN REQUIRED</h2>
             <p className="text-zinc-400 text-xs font-bold text-center leading-5 mb-6">
-              Please enter the edit token issued when creating this note.
+              Please enter the note token issued when creating this note.
             </p>
 
             <form onSubmit={handleConfirmToken} className="space-y-4">
@@ -354,9 +354,9 @@ export default function EditPastePage(props: EditPageProps) {
                 <Key className="h-4 w-4 text-zinc-500 ml-3 mr-2 flex-shrink-0" />
                 <input
                   type="password"
-                  placeholder="Enter Edit Token"
-                  value={editTokenInput}
-                  onChange={(e) => setEditTokenInput(e.target.value)}
+                  placeholder="Enter Note Token"
+                  value={noteTokenInput}
+                  onChange={(e) => setNoteTokenInput(e.target.value)}
                   className="flex-1 px-2 py-2 bg-transparent text-white font-mono text-xs outline-none border-0 font-bold"
                 />
               </div>

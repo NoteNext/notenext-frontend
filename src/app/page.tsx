@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Settings, Save, Check, Loader2, Copy, ExternalLink, RefreshCw, Lock } from 'lucide-react';
 import { generateKey, exportKey, encryptData } from '@/lib/crypto';
-import { API_BASE_URL, saveDeleteToken, saveEditToken } from '@/lib/api';
+import { API_BASE_URL, saveNoteToken } from '@/lib/api';
 
 // Language options matching Katbin clone requirements
 const LANGUAGES = [
@@ -172,12 +172,10 @@ export default function CreatePastePage() {
 
       const note = await response.json();
 
-      // Store the edit and delete tokens locally so the creator can edit or delete the note later.
-      if (note.editToken) {
-        saveEditToken(note.shareId, note.editToken);
-      }
-      if (note.deleteToken) {
-        saveDeleteToken(note.shareId, note.deleteToken);
+      // Store the noteToken locally so the creator can edit or delete the note later.
+      const token = note.noteToken || note.token;
+      if (token && note.shareId) {
+        saveNoteToken(note.shareId, token);
       }
 
       showToast('Note shared and link copied!');

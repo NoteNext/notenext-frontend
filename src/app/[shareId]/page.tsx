@@ -11,8 +11,8 @@ import { importKey, decryptData, encryptData } from '@/lib/crypto';
 import { highlightToLines, mapLanguage } from '@/lib/syntax';
 import { 
   fetchNote, deleteNote, updateNote, 
-  isCreator as checkIsCreator, clearDeleteToken, 
-  getEditToken, saveEditToken 
+  isCreator as checkIsCreator, clearNoteToken, 
+  getNoteToken, saveNoteToken 
 } from '@/lib/api';
 
 const LANGUAGES = [
@@ -82,9 +82,9 @@ export default function ViewPastePage(props: PageProps) {
   const [editTitle, setEditTitle] = useState('');
   const [editLanguage, setEditLanguage] = useState('text');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [promptForEditToken, setPromptForEditToken] = useState(false);
-  const [manualEditToken, setManualEditToken] = useState('');
-  const [editTokenError, setEditTokenError] = useState<string | null>(null);
+  const [promptForNoteToken, setPromptForNoteToken] = useState(false);
+  const [manualNoteToken, setManualNoteToken] = useState('');
+  const [noteTokenError, setNoteTokenError] = useState<string | null>(null);
 
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -360,7 +360,7 @@ export default function ViewPastePage(props: PageProps) {
         throw new Error('Failed to delete note. You might not be authorized.');
       }
 
-      clearDeleteToken(shareId);
+      clearNoteToken(shareId);
 
       showToast('Note deleted successfully!');
       setTimeout(() => {
@@ -374,9 +374,9 @@ export default function ViewPastePage(props: PageProps) {
 
   // Note Editing Logic
   const handleStartEdit = () => {
-    const token = getEditToken(shareId);
+    const token = getNoteToken(shareId);
     if (!token && !isCreator) {
-      setPromptForEditToken(true);
+      setPromptForNoteToken(true);
       return;
     }
     setEditContent(decryptedData?.content || '');
@@ -390,15 +390,15 @@ export default function ViewPastePage(props: PageProps) {
     }, 50);
   };
 
-  const handleConfirmEditToken = (e: React.FormEvent) => {
+  const handleConfirmNoteToken = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualEditToken.trim()) {
-      setEditTokenError('Please enter an edit token.');
+    if (!manualNoteToken.trim()) {
+      setNoteTokenError('Please enter a note token.');
       return;
     }
-    setEditTokenError(null);
-    saveEditToken(shareId, manualEditToken.trim());
-    setPromptForEditToken(false);
+    setNoteTokenError(null);
+    saveNoteToken(shareId, manualNoteToken.trim());
+    setPromptForNoteToken(false);
     setEditContent(decryptedData?.content || '');
     setEditTitle(decryptedData?.title || 'Untitled Note');
     setEditLanguage(decryptedData?.language || 'text');
@@ -416,9 +416,9 @@ export default function ViewPastePage(props: PageProps) {
       return;
     }
 
-    const token = getEditToken(shareId) || manualEditToken.trim();
+    const token = getNoteToken(shareId) || manualNoteToken.trim();
     if (!token) {
-      setPromptForEditToken(true);
+      setPromptForNoteToken(true);
       return;
     }
 
@@ -430,8 +430,8 @@ export default function ViewPastePage(props: PageProps) {
       const hexKey = hash && hash.length > 1 ? hash.substring(1) : null;
       const activeKey = hexKey || (enteredKey ? enteredKey.trim().replace(/^#/, '') : null);
 
-      let payload: { ciphertext?: string; iv?: string; content?: string; editToken?: string } = {
-        editToken: token,
+      let payload: { ciphertext?: string; iv?: string; content?: string; noteToken?: string } = {
+        noteToken: token,
       };
 
       if (activeKey && rawNote?.ciphertext) {
@@ -466,7 +466,7 @@ export default function ViewPastePage(props: PageProps) {
         throw new Error(errData.error || `Failed to update note (HTTP ${res.status})`);
       }
 
-      saveEditToken(shareId, token);
+      saveNoteToken(shareId, token);
       setDecryptedData({
         content: editContent,
         title: editTitle.trim() || 'Untitled Note',
@@ -474,7 +474,7 @@ export default function ViewPastePage(props: PageProps) {
       });
 
       setIsEditing(false);
-      setPromptForEditToken(false);
+      setPromptForNoteToken(false);
       showToast('Note updated successfully!');
     } catch (err: any) {
       console.error('Failed to update note:', err);
@@ -494,7 +494,7 @@ export default function ViewPastePage(props: PageProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isEditing, editContent, editTitle, editLanguage, manualEditToken, isSavingEdit]);
+  }, [isEditing, editContent, editTitle, editLanguage, manualNoteToken, isSavingEdit]);
 
   const codeLines = decryptedData ? highlightToLines(
     decryptedData.content, 
@@ -827,32 +827,32 @@ export default function ViewPastePage(props: PageProps) {
         </div>
       </footer>
 
-      {/* Edit Token Prompt Modal */}
-      {promptForEditToken && (
+      {/* Note Token Prompt Modal */}
+      {promptForNoteToken && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-6 select-text">
           <div className="max-w-md w-full p-8 bg-[#1a1a1a] border border-zinc-800 rounded">
             <div className="w-12 h-12 bg-[#ff9800]/10 border border-[#ff9800] rounded-full flex items-center justify-center mx-auto mb-4">
               <Pencil className="h-5 w-5 text-[#ff9800]" />
             </div>
-            <h2 className="text-[#ff9800] font-bold text-base text-center mb-2">EDIT TOKEN REQUIRED</h2>
+            <h2 className="text-[#ff9800] font-bold text-base text-center mb-2">NOTE TOKEN REQUIRED</h2>
             <p className="text-zinc-400 text-xs font-bold text-center leading-5 mb-6">
-              Authority is proven with the secret edit token issued at note creation time. Please enter your edit token below.
+              Authority is proven with the secret note token issued at note creation time. Please enter your note token below.
             </p>
 
-            <form onSubmit={handleConfirmEditToken} className="space-y-4">
+            <form onSubmit={handleConfirmNoteToken} className="space-y-4">
               <div className="flex bg-[#212121] border border-zinc-800 rounded overflow-hidden p-1 items-center">
                 <Key className="h-4 w-4 text-zinc-500 ml-3 mr-2 flex-shrink-0" />
                 <input
                   type="password"
-                  placeholder="Enter Edit Token"
-                  value={manualEditToken}
-                  onChange={(e) => setManualEditToken(e.target.value)}
+                  placeholder="Enter Note Token"
+                  value={manualNoteToken}
+                  onChange={(e) => setManualNoteToken(e.target.value)}
                   className="flex-1 px-2 py-2 bg-transparent text-white font-mono text-xs outline-none border-0 font-bold"
                 />
               </div>
 
-              {editTokenError && (
-                <p className="text-red-500 text-xs font-bold text-center">{editTokenError}</p>
+              {noteTokenError && (
+                <p className="text-red-500 text-xs font-bold text-center">{noteTokenError}</p>
               )}
 
               <div className="flex gap-3">
@@ -864,7 +864,7 @@ export default function ViewPastePage(props: PageProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPromptForEditToken(false)}
+                  onClick={() => setPromptForNoteToken(false)}
                   className="px-4 py-2.5 bg-zinc-800 text-white font-bold text-xs rounded hover:bg-zinc-700 transition-colors cursor-pointer"
                 >
                   CANCEL

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Trash2, CheckCircle, AlertTriangle } from 'lucide-react';
-import { deleteNote, clearDeleteToken } from '@/lib/api';
+import { deleteNote, clearNoteToken } from '@/lib/api';
 
 interface DeletePageProps {
   params: Promise<{ shareId: string }>;
@@ -33,7 +33,7 @@ export default function DeletePastePage(props: DeletePageProps) {
         }
 
         // Clean up from local storage
-        clearDeleteToken(shareId);
+        clearNoteToken(shareId);
 
         setSuccess(true);
         // Redirect back home after 3 seconds

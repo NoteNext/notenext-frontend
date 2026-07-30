@@ -11,13 +11,12 @@ export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api-notenext.suvojeetsengupta.in'
 ).replace(/\/$/, '');
 
-// LocalStorage helpers for the note delete-token and edit-token (creator proof).
-const deleteTokenKey = (shareId: string) => `nn_delete_token_${shareId}`;
-const editTokenKey = (shareId: string) => `nn_edit_token_${shareId}`;
+// LocalStorage helpers for the noteToken (creator proof).
+const noteTokenKey = (shareId: string) => `nn_note_token_${shareId}`;
 
-export function saveEditToken(shareId: string, token: string) {
+export function saveNoteToken(shareId: string, token: string) {
   if (typeof window === 'undefined' || !token) return;
-  localStorage.setItem(editTokenKey(shareId), token);
+  localStorage.setItem(noteTokenKey(shareId), token);
   const created = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
   if (!created.includes(shareId)) {
     created.push(shareId);
@@ -25,35 +24,20 @@ export function saveEditToken(shareId: string, token: string) {
   }
 }
 
-export function saveDeleteToken(shareId: string, token: string) {
-  if (typeof window === 'undefined' || !token) return;
-  localStorage.setItem(deleteTokenKey(shareId), token);
-  const created = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
-  if (!created.includes(shareId)) {
-    created.push(shareId);
-    localStorage.setItem('nn_created_notes', JSON.stringify(created));
-  }
-}
-
-export function getEditToken(shareId: string): string | null {
+export function getNoteToken(shareId: string): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(editTokenKey(shareId)) || localStorage.getItem(deleteTokenKey(shareId));
+  return (
+    localStorage.getItem(noteTokenKey(shareId)) ||
+    localStorage.getItem(`nn_edit_token_${shareId}`) ||
+    localStorage.getItem(`nn_delete_token_${shareId}`)
+  );
 }
 
-export function getDeleteToken(shareId: string): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(deleteTokenKey(shareId)) || localStorage.getItem(editTokenKey(shareId));
-}
-
-export function clearEditToken(shareId: string) {
+export function clearNoteToken(shareId: string) {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem(editTokenKey(shareId));
-}
-
-export function clearDeleteToken(shareId: string) {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(deleteTokenKey(shareId));
-  localStorage.removeItem(editTokenKey(shareId));
+  localStorage.removeItem(noteTokenKey(shareId));
+  localStorage.removeItem(`nn_edit_token_${shareId}`);
+  localStorage.removeItem(`nn_delete_token_${shareId}`);
   const created = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
   localStorage.setItem(
     'nn_created_notes',
@@ -63,7 +47,7 @@ export function clearDeleteToken(shareId: string) {
 
 export function isCreator(shareId: string): boolean {
   if (typeof window === 'undefined') return false;
-  if (localStorage.getItem(editTokenKey(shareId)) || localStorage.getItem(deleteTokenKey(shareId))) return true;
+  if (getNoteToken(shareId)) return true;
   const created = JSON.parse(localStorage.getItem('nn_created_notes') || '[]');
   return created.includes(shareId);
 }
@@ -73,22 +57,21 @@ export async function fetchNote(shareId: string): Promise<Response> {
   return fetch(`${API_BASE_URL}/api/notes/${shareId}`);
 }
 
-// Update a note directly in the backend using the stored or provided edit token.
+// Update a note directly in the backend using the stored or provided noteToken.
 export async function updateNote(
   shareId: string,
-  payload: { ciphertext?: string; iv?: string; content?: string; editToken?: string }
+  payload: { ciphertext?: string; iv?: string; content?: string; noteToken?: string }
 ): Promise<Response> {
-  const token = payload.editToken || getEditToken(shareId) || getDeleteToken(shareId) || '';
+  const token = payload.noteToken || getNoteToken(shareId) || '';
   if (!token) {
     return new Response(
-      JSON.stringify({ error: 'Edit token required. Only the creator of this note can edit it.' }),
+      JSON.stringify({ error: 'Note token required. Only the creator of this note can edit it.' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } }
     );
   }
 
   const body: Record<string, any> = {
-    editToken: token,
-    deleteToken: token,
+    noteToken: token,
   };
   if (payload.ciphertext !== undefined) body.ciphertext = payload.ciphertext;
   if (payload.iv !== undefined) body.iv = payload.iv;
@@ -98,16 +81,15 @@ export async function updateNote(
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'x-edit-token': token,
-      'x-delete-token': token,
+      'x-note-token': token,
     },
     body: JSON.stringify(body),
   });
 }
 
-// Delete a note directly from the backend using the stored delete token.
+// Delete a note directly from the backend using the stored noteToken.
 export async function deleteNote(shareId: string, customToken?: string): Promise<Response> {
-  const token = customToken || getDeleteToken(shareId) || getEditToken(shareId) || '';
+  const token = customToken || getNoteToken(shareId) || '';
   if (!token) {
     return new Response(
       JSON.stringify({ error: 'Only the creator of this note can delete it.' }),
@@ -115,15 +97,11 @@ export async function deleteNote(shareId: string, customToken?: string): Promise
     );
   }
   return fetch(
-    `${API_BASE_URL}/api/notes/${shareId}?token=${encodeURIComponent(token)}&deleteToken=${encodeURIComponent(token)}&editToken=${encodeURIComponent(token)}`,
+    `${API_BASE_URL}/api/notes/${shareId}?noteToken=${encodeURIComponent(token)}`,
     {
       method: 'DELETE',
       headers: {
-        'x-delete-token': token,
-        'x-edit-token': token,
-        'X-Delete-Token': token,
-        'X-Edit-Token': token,
-        'Delete-Token': token,
+        'x-note-token': token,
         accept: '*/*',
       },
     }
