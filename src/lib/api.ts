@@ -78,7 +78,7 @@ export async function updateNote(
   shareId: string,
   payload: { ciphertext?: string; iv?: string; content?: string; editToken?: string }
 ): Promise<Response> {
-  const token = payload.editToken || getEditToken(shareId) || '';
+  const token = payload.editToken || getEditToken(shareId) || getDeleteToken(shareId) || '';
   if (!token) {
     return new Response(
       JSON.stringify({ error: 'Edit token required. Only the creator of this note can edit it.' }),
@@ -88,6 +88,7 @@ export async function updateNote(
 
   const body: Record<string, any> = {
     editToken: token,
+    deleteToken: token,
   };
   if (payload.ciphertext !== undefined) body.ciphertext = payload.ciphertext;
   if (payload.iv !== undefined) body.iv = payload.iv;
@@ -98,30 +99,31 @@ export async function updateNote(
     headers: {
       'Content-Type': 'application/json',
       'x-edit-token': token,
+      'x-delete-token': token,
     },
     body: JSON.stringify(body),
   });
 }
 
 // Delete a note directly from the backend using the stored delete token.
-export async function deleteNote(shareId: string): Promise<Response> {
-  const token = getDeleteToken(shareId) || '';
+export async function deleteNote(shareId: string, customToken?: string): Promise<Response> {
+  const token = customToken || getDeleteToken(shareId) || getEditToken(shareId) || '';
   if (!token) {
-    // Mimic the old proxy's 403 so callers keep their existing error handling.
     return new Response(
       JSON.stringify({ error: 'Only the creator of this note can delete it.' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } }
     );
   }
   return fetch(
-    `${API_BASE_URL}/api/notes/${shareId}?token=${encodeURIComponent(token)}&deleteToken=${encodeURIComponent(token)}`,
+    `${API_BASE_URL}/api/notes/${shareId}?token=${encodeURIComponent(token)}&deleteToken=${encodeURIComponent(token)}&editToken=${encodeURIComponent(token)}`,
     {
       method: 'DELETE',
       headers: {
-        'X-Delete-Token': token,
-        'Delete-Token': token,
-        'X-Edit-Token': token,
+        'x-delete-token': token,
         'x-edit-token': token,
+        'X-Delete-Token': token,
+        'X-Edit-Token': token,
+        'Delete-Token': token,
         accept: '*/*',
       },
     }
