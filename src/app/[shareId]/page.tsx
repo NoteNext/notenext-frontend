@@ -1,14 +1,38 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   FileText, Copy, Download, Trash2, 
-  EyeOff, Loader2, ListOrdered, WrapText, Lock, Key
+  EyeOff, Loader2, ListOrdered, WrapText, Lock, Key,
+  Pencil, Save, X
 } from 'lucide-react';
-import { importKey, decryptData } from '@/lib/crypto';
+import { importKey, decryptData, encryptData } from '@/lib/crypto';
 import { highlightToLines, mapLanguage } from '@/lib/syntax';
-import { fetchNote, deleteNote, isCreator as checkIsCreator, clearDeleteToken } from '@/lib/api';
+import { 
+  fetchNote, deleteNote, updateNote, 
+  isCreator as checkIsCreator, clearDeleteToken, 
+  getEditToken, saveEditToken 
+} from '@/lib/api';
+
+const LANGUAGES = [
+  { value: 'auto', label: 'Auto Detect' },
+  { value: 'text', label: 'Plain Text' },
+  { value: 'markdown', label: 'Markdown' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'python', label: 'Python' },
+  { value: 'cpp', label: 'C++' },
+  { value: 'c', label: 'C' },
+  { value: 'go', label: 'Go' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'html', label: 'HTML' },
+  { value: 'css', label: 'CSS' },
+  { value: 'json', label: 'JSON' },
+  { value: 'yaml', label: 'YAML' },
+  { value: 'sql', label: 'SQL' },
+  { value: 'bash', label: 'Bash' },
+];
 
 interface PageProps {
   params: Promise<{ shareId: string }>;
@@ -52,7 +76,19 @@ export default function ViewPastePage(props: PageProps) {
   const [isCreator, setIsCreator] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Safe UTF-8 Base64 Decoder
+  // Editing States
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editLanguage, setEditLanguage] = useState('text');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [promptForEditToken, setPromptForEditToken] = useState(false);
+  const [manualEditToken, setManualEditToken] = useState('');
+  const [editTokenError, setEditTokenError] = useState<string | null>(null);
+
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Safe UTF-8 Base64 Decoder & Encoder
   const base64ToUtf8 = (base64: string) => {
     try {
       return decodeURIComponent(
@@ -63,6 +99,18 @@ export default function ViewPastePage(props: PageProps) {
       );
     } catch (e) {
       return atob(base64); // Fallback
+    }
+  };
+
+  const utf8ToBase64 = (str: string) => {
+    try {
+      return btoa(
+        encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, p1) => {
+          return String.fromCharCode(parseInt(p1, 16));
+        })
+      );
+    } catch (e) {
+      return btoa(str);
     }
   };
 
@@ -103,7 +151,6 @@ export default function ViewPastePage(props: PageProps) {
         });
 
         // 4. Retrieve content
-        // Check if the API returned plain content directly (no ciphertext)
         if (note.content && !note.ciphertext) {
           // Direct content mode — no decryption or base64 decoding needed
           const contentStr = note.content;
@@ -232,7 +279,6 @@ export default function ViewPastePage(props: PageProps) {
 
     setDecryptError(null);
     try {
-      // Clean clean hash prefixes if pasted with #
       const cleanKey = enteredKey.trim().replace(/^#/, '');
       await decryptWithKey(rawNote, cleanKey);
       showToast('Note decrypted successfully!');
@@ -270,7 +316,6 @@ export default function ViewPastePage(props: PageProps) {
     const content = decryptedData.content;
     const title = decryptedData.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'note';
     
-    // Extensions mapping
     const extensions: Record<string, string> = {
       'text': 'txt',
       'markdown': 'md',
@@ -326,6 +371,129 @@ export default function ViewPastePage(props: PageProps) {
       setIsDeleting(false);
     }
   };
+
+  // Note Editing Logic
+  const handleStartEdit = () => {
+    const token = getEditToken(shareId);
+    if (!token && !isCreator) {
+      setPromptForEditToken(true);
+      return;
+    }
+    setEditContent(decryptedData?.content || '');
+    setEditTitle(decryptedData?.title || 'Untitled Note');
+    setEditLanguage(decryptedData?.language || 'text');
+    setIsEditing(true);
+    setTimeout(() => {
+      if (editTextareaRef.current) {
+        editTextareaRef.current.focus();
+      }
+    }, 50);
+  };
+
+  const handleConfirmEditToken = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualEditToken.trim()) {
+      setEditTokenError('Please enter an edit token.');
+      return;
+    }
+    setEditTokenError(null);
+    saveEditToken(shareId, manualEditToken.trim());
+    setPromptForEditToken(false);
+    setEditContent(decryptedData?.content || '');
+    setEditTitle(decryptedData?.title || 'Untitled Note');
+    setEditLanguage(decryptedData?.language || 'text');
+    setIsEditing(true);
+    setTimeout(() => {
+      if (editTextareaRef.current) {
+        editTextareaRef.current.focus();
+      }
+    }, 50);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editContent.trim()) {
+      showToast('Note content cannot be empty!', 'error');
+      return;
+    }
+
+    const token = getEditToken(shareId) || manualEditToken.trim();
+    if (!token) {
+      setPromptForEditToken(true);
+      return;
+    }
+
+    if (isSavingEdit) return;
+
+    setIsSavingEdit(true);
+    try {
+      const hash = window.location.hash;
+      const hexKey = hash && hash.length > 1 ? hash.substring(1) : null;
+
+      let payload: { ciphertext?: string; iv?: string; content?: string; editToken?: string } = {
+        editToken: token,
+      };
+
+      if (hexKey && rawNote?.ciphertext) {
+        // Encrypted note mode
+        const cryptoKey = await importKey(hexKey);
+        const dataToEncrypt = JSON.stringify({
+          content: editContent,
+          title: editTitle.trim() || 'Untitled Note',
+          language: editLanguage,
+        });
+        const encrypted = await encryptData(dataToEncrypt, cryptoKey);
+        payload.ciphertext = encrypted.ciphertext;
+        payload.iv = encrypted.iv;
+      } else if (rawNote?.content && !rawNote?.ciphertext) {
+        // Direct plaintext content mode
+        payload.content = editContent;
+      } else {
+        // Raw Base64 mode
+        const dataStr = JSON.stringify({
+          content: editContent,
+          title: editTitle.trim() || 'Untitled Note',
+          language: editLanguage,
+        });
+        payload.ciphertext = utf8ToBase64(dataStr);
+        payload.iv = rawNote?.iv || 'aB3dE5fG7hI9jK1L';
+        payload.content = editContent;
+      }
+
+      const res = await updateNote(shareId, payload);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to update note (HTTP ${res.status})`);
+      }
+
+      saveEditToken(shareId, token);
+      setDecryptedData({
+        content: editContent,
+        title: editTitle.trim() || 'Untitled Note',
+        language: editLanguage,
+      });
+
+      setIsEditing(false);
+      setPromptForEditToken(false);
+      showToast('Note updated successfully!');
+    } catch (err: any) {
+      console.error('Failed to update note:', err);
+      showToast(err.message || 'Failed to update note.', 'error');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // Keyboard shortcut Ctrl+S to save edits
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEditing && (e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSaveEdit();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEditing, editContent, editTitle, editLanguage, manualEditToken, isSavingEdit]);
 
   const codeLines = decryptedData ? highlightToLines(
     decryptedData.content, 
@@ -421,84 +589,121 @@ export default function ViewPastePage(props: PageProps) {
 
         {/* View Options Toolbar & Action Buttons */}
         <div className="flex items-center gap-3 md:gap-5">
-          {/* Options: Line numbers, wrapping, font-size */}
-          <div className="hidden sm:flex items-center border-r border-zinc-800 pr-4 mr-2 gap-3 text-zinc-400">
-            {/* Wrap Toggle */}
-            <button
-              onClick={() => setWrapLines(!wrapLines)}
-              className={`p-1 rounded cursor-pointer transition-colors ${wrapLines ? 'text-[#ff9800] bg-zinc-800' : 'hover:text-white'}`}
-              title="Toggle Wrap Lines"
-            >
-              <WrapText className="h-4 w-4" />
-            </button>
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSaveEdit}
+                disabled={isSavingEdit}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#ff9800] text-black font-bold text-xs rounded hover:bg-amber-600 transition-colors cursor-pointer disabled:opacity-50"
+                title="Save Changes (Ctrl+S)"
+              >
+                {isSavingEdit ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-black" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                SAVE CHANGES
+              </button>
+              <button
+                onClick={() => setIsEditing(false)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 text-white font-bold text-xs rounded hover:bg-zinc-700 transition-colors cursor-pointer"
+                title="Cancel Editing"
+              >
+                <X className="h-4 w-4" />
+                CANCEL
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Options: Line numbers, wrapping, font-size */}
+              <div className="hidden sm:flex items-center border-r border-zinc-800 pr-4 mr-2 gap-3 text-zinc-400">
+                {/* Wrap Toggle */}
+                <button
+                  onClick={() => setWrapLines(!wrapLines)}
+                  className={`p-1 rounded cursor-pointer transition-colors ${wrapLines ? 'text-[#ff9800] bg-zinc-800' : 'hover:text-white'}`}
+                  title="Toggle Wrap Lines"
+                >
+                  <WrapText className="h-4 w-4" />
+                </button>
 
-            {/* Line Numbers Toggle */}
-            <button
-              onClick={() => setShowLineNumbers(!showLineNumbers)}
-              className={`p-1 rounded cursor-pointer transition-colors ${showLineNumbers ? 'text-[#ff9800] bg-zinc-800' : 'hover:text-white'}`}
-              title="Toggle Line Numbers"
-            >
-              <ListOrdered className="h-4 w-4" />
-            </button>
+                {/* Line Numbers Toggle */}
+                <button
+                  onClick={() => setShowLineNumbers(!showLineNumbers)}
+                  className={`p-1 rounded cursor-pointer transition-colors ${showLineNumbers ? 'text-[#ff9800] bg-zinc-800' : 'hover:text-white'}`}
+                  title="Toggle Line Numbers"
+                >
+                  <ListOrdered className="h-4 w-4" />
+                </button>
 
-            {/* Font Size Select */}
-            <select
-              value={fontSize}
-              onChange={(e) => setFontSize(Number(e.target.value) as any)}
-              className="bg-[#212121] border border-zinc-800 text-xs px-2 py-0.5 rounded text-white outline-none"
-              title="Font Size"
-            >
-              <option value="12">12px</option>
-              <option value="14">14px</option>
-              <option value="16">16px</option>
-              <option value="18">18px</option>
-              <option value="20">20px</option>
-            </select>
-          </div>
+                {/* Font Size Select */}
+                <select
+                  value={fontSize}
+                  onChange={(e) => setFontSize(Number(e.target.value) as any)}
+                  className="bg-[#212121] border border-zinc-800 text-xs px-2 py-0.5 rounded text-white outline-none"
+                  title="Font Size"
+                >
+                  <option value="12">12px</option>
+                  <option value="14">14px</option>
+                  <option value="16">16px</option>
+                  <option value="18">18px</option>
+                  <option value="20">20px</option>
+                </select>
+              </div>
 
-          {/* Copy Button */}
-          <button
-            onClick={handleCopyLink}
-            className="p-1.5 text-white hover:text-[#ff9800] hover:bg-zinc-800/50 rounded-sm transition-colors cursor-pointer"
-            title="Copy Share Link"
-          >
-            <Copy className="h-5 w-5" />
-          </button>
+              {/* Edit Button */}
+              <button
+                onClick={handleStartEdit}
+                className="p-1.5 text-white hover:text-[#ff9800] hover:bg-zinc-800/50 rounded-sm transition-colors cursor-pointer"
+                title="Edit Note"
+              >
+                <Pencil className="h-5 w-5" />
+              </button>
 
-          {/* Download Button */}
-          <button
-            onClick={handleDownload}
-            className="p-1.5 text-white hover:text-[#ff9800] hover:bg-zinc-800/50 rounded-sm transition-colors cursor-pointer"
-            title="Download Paste"
-          >
-            <Download className="h-5 w-5" />
-          </button>
+              {/* Copy Button */}
+              <button
+                onClick={handleCopyLink}
+                className="p-1.5 text-white hover:text-[#ff9800] hover:bg-zinc-800/50 rounded-sm transition-colors cursor-pointer"
+                title="Copy Share Link"
+              >
+                <Copy className="h-5 w-5" />
+              </button>
 
-          {/* Raw Button */}
-          <a
-            href={`/raw/${shareId}${window.location.hash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-1.5 text-white hover:text-[#ff9800] hover:bg-zinc-800/50 rounded-sm transition-colors cursor-pointer"
-            title="View Raw text"
-          >
-            <FileText className="h-5 w-5" />
-          </a>
+              {/* Download Button */}
+              <button
+                onClick={handleDownload}
+                className="p-1.5 text-white hover:text-[#ff9800] hover:bg-zinc-800/50 rounded-sm transition-colors cursor-pointer"
+                title="Download Paste"
+              >
+                <Download className="h-5 w-5" />
+              </button>
 
-          {/* Delete Button (Creator only) */}
-          {isCreator && (
-            <button
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="p-1.5 text-red-500 hover:text-red-400 hover:bg-zinc-800/50 rounded-sm transition-colors cursor-pointer"
-              title="Delete Note"
-            >
-              {isDeleting ? (
-                <Loader2 className="h-5 w-5 animate-spin text-red-500" />
-              ) : (
-                <Trash2 className="h-5 w-5" />
+              {/* Raw Button */}
+              <a
+                href={`/raw/${shareId}${window.location.hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 text-white hover:text-[#ff9800] hover:bg-zinc-800/50 rounded-sm transition-colors cursor-pointer"
+                title="View Raw text"
+              >
+                <FileText className="h-5 w-5" />
+              </a>
+
+              {/* Delete Button (Creator only) */}
+              {isCreator && (
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="p-1.5 text-red-500 hover:text-red-400 hover:bg-zinc-800/50 rounded-sm transition-colors cursor-pointer"
+                  title="Delete Note"
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-red-500" />
+                  ) : (
+                    <Trash2 className="h-5 w-5" />
+                  )}
+                </button>
               )}
-            </button>
+            </>
           )}
         </div>
       </header>
@@ -507,11 +712,11 @@ export default function ViewPastePage(props: PageProps) {
       <section className="bg-[#1a1a1a] border-b border-zinc-800 px-6 py-2 flex flex-wrap gap-x-6 gap-y-1.5 text-xs text-zinc-400 font-bold select-none">
         <div>
           <span className="text-[#ff9800]">TITLE:</span>{' '}
-          <span className="text-white">{decryptedData?.title}</span>
+          <span className="text-white">{isEditing ? editTitle || 'Untitled Note' : decryptedData?.title}</span>
         </div>
         <div>
           <span className="text-[#ff9800]">LANGUAGE:</span>{' '}
-          <span className="text-white uppercase">{decryptedData?.language}</span>
+          <span className="text-white uppercase">{isEditing ? editLanguage : decryptedData?.language}</span>
         </div>
         <div>
           <span className="text-[#ff9800]">SHARED BY:</span>{' '}
@@ -531,41 +736,85 @@ export default function ViewPastePage(props: PageProps) {
       </section>
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full h-full relative overflow-auto bg-[#212121] py-4 selection:bg-[#ff9800]/30 select-text">
-        {/* Standard Syntax Highlighted Code Viewer */}
-        <div 
-          className="px-6 font-mono font-bold leading-6 overflow-x-auto"
-          style={{ fontSize: `${fontSize}px` }}
-        >
-          {codeLines.map((line, lineIdx) => (
-            <div key={lineIdx} className="flex select-text min-w-max hover:bg-zinc-800/10">
-              {/* Line number column */}
-              {showLineNumbers && (
-                <span className="text-zinc-600 select-none text-right pr-6 w-12 flex-shrink-0 border-r border-zinc-800 mr-4">
-                  {lineIdx + 1}
-                </span>
-              )}
-              
-              {/* Code line content */}
-              <span className={`flex-1 ${wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}>
-                {line.length === 0 ? (
-                  // empty line spacer
-                  <br />
-                ) : (
-                  line.map((token, tokenIdx) => (
-                    <span 
-                      key={tokenIdx} 
-                      className={token.type ? `token ${token.type}` : ''}
-                    >
-                      {token.content}
-                    </span>
-                  ))
-                )}
-              </span>
+      {isEditing ? (
+        <div className="flex flex-col flex-1 w-full h-full bg-[#212121] overflow-hidden select-text">
+          {/* Edit Toolbar */}
+          <div className="bg-[#1a1a1a] border-b border-zinc-800 px-6 py-3 flex flex-wrap items-center gap-4 text-xs font-bold select-none">
+            <div className="flex items-center gap-2">
+              <label className="text-[#ff9800]">TITLE:</label>
+              <input
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Untitled Note"
+                className="bg-[#212121] border border-zinc-800 rounded px-2.5 py-1 text-white outline-none focus:border-[#ff9800]"
+              />
             </div>
-          ))}
+            <div className="flex items-center gap-2">
+              <label className="text-[#ff9800]">LANGUAGE:</label>
+              <select
+                value={editLanguage}
+                onChange={(e) => setEditLanguage(e.target.value)}
+                className="bg-[#212121] border border-zinc-800 rounded px-2.5 py-1 text-white outline-none focus:border-[#ff9800] appearance-none cursor-pointer"
+              >
+                {LANGUAGES.map((l) => (
+                  <option key={l.value} value={l.value} className="bg-[#212121]">
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="text-zinc-500 text-xs ml-auto hidden sm:inline">
+              Press Ctrl+S to save changes
+            </span>
+          </div>
+
+          {/* Edit Textarea */}
+          <textarea
+            ref={editTextareaRef}
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            placeholder="Edit your note content..."
+            className="flex-1 w-full h-full p-6 bg-[#212121] text-white font-mono font-bold text-sm outline-none resize-none border-0 selection:bg-[#ff9800]/30"
+          />
         </div>
-      </main>
+      ) : (
+        <main className="flex-1 w-full h-full relative overflow-auto bg-[#212121] py-4 selection:bg-[#ff9800]/30 select-text">
+          {/* Standard Syntax Highlighted Code Viewer */}
+          <div 
+            className="px-6 font-mono font-bold leading-6 overflow-x-auto"
+            style={{ fontSize: `${fontSize}px` }}
+          >
+            {codeLines.map((line, lineIdx) => (
+              <div key={lineIdx} className="flex select-text min-w-max hover:bg-zinc-800/10">
+                {/* Line number column */}
+                {showLineNumbers && (
+                  <span className="text-zinc-600 select-none text-right pr-6 w-12 flex-shrink-0 border-r border-zinc-800 mr-4">
+                    {lineIdx + 1}
+                  </span>
+                )}
+                
+                {/* Code line content */}
+                <span className={`flex-1 ${wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}>
+                  {line.length === 0 ? (
+                    // empty line spacer
+                    <br />
+                  ) : (
+                    line.map((token, tokenIdx) => (
+                      <span 
+                        key={tokenIdx} 
+                        className={token.type ? `token ${token.type}` : ''}
+                      >
+                        {token.content}
+                      </span>
+                    ))
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </main>
+      )}
 
       {/* Footer */}
       <footer className="font-bold border-t border-zinc-800 bg-[#1a1a1a] z-10 select-none">
@@ -575,6 +824,54 @@ export default function ViewPastePage(props: PageProps) {
           </a>
         </div>
       </footer>
+
+      {/* Edit Token Prompt Modal */}
+      {promptForEditToken && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-6 select-text">
+          <div className="max-w-md w-full p-8 bg-[#1a1a1a] border border-zinc-800 rounded">
+            <div className="w-12 h-12 bg-[#ff9800]/10 border border-[#ff9800] rounded-full flex items-center justify-center mx-auto mb-4">
+              <Pencil className="h-5 w-5 text-[#ff9800]" />
+            </div>
+            <h2 className="text-[#ff9800] font-bold text-base text-center mb-2">EDIT TOKEN REQUIRED</h2>
+            <p className="text-zinc-400 text-xs font-bold text-center leading-5 mb-6">
+              Authority is proven with the secret edit token issued at note creation time. Please enter your edit token below.
+            </p>
+
+            <form onSubmit={handleConfirmEditToken} className="space-y-4">
+              <div className="flex bg-[#212121] border border-zinc-800 rounded overflow-hidden p-1 items-center">
+                <Key className="h-4 w-4 text-zinc-500 ml-3 mr-2 flex-shrink-0" />
+                <input
+                  type="password"
+                  placeholder="Enter Edit Token"
+                  value={manualEditToken}
+                  onChange={(e) => setManualEditToken(e.target.value)}
+                  className="flex-1 px-2 py-2 bg-transparent text-white font-mono text-xs outline-none border-0 font-bold"
+                />
+              </div>
+
+              {editTokenError && (
+                <p className="text-red-500 text-xs font-bold text-center">{editTokenError}</p>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-[#ff9800] text-black font-bold text-xs rounded hover:bg-amber-600 transition-colors cursor-pointer"
+                >
+                  PROCEED TO EDIT
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPromptForEditToken(false)}
+                  className="px-4 py-2.5 bg-zinc-800 text-white font-bold text-xs rounded hover:bg-zinc-700 transition-colors cursor-pointer"
+                >
+                  CANCEL
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Sleek Custom Toast Notifications */}
       {toast && (
