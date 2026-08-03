@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.suvojeet.notenext",
+      "sha256_cert_fingerprints": [
+        "FA:85:2D:5F:BD:91:1E:CA:D2:B9:C1:88:D4:56:89:23:7A:05:B5:67:AC:2C:7F:C5:1C:3C:49:80:F8:51:E2:BE"
+      ]
+    }
+  }
+]
