@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Settings, Save, Check, Loader2, Copy, ExternalLink, RefreshCw, Lock } from 'lucide-react';
 import { generateKey, exportKey, encryptData } from '@/lib/crypto';
 import { API_BASE_URL, saveNoteToken } from '@/lib/api';
+import { isHtmlContent } from '@/lib/renderer';
+
 
 // Language options matching Katbin clone requirements
 const LANGUAGES = [
@@ -380,6 +382,8 @@ export default function CreatePastePage() {
           <span className="text-[#ff9800] mr-2">&gt;</span>
           {content && isUrl(content) && encryptNote ? (
             <span className="text-white">URL detected! NoteNext will encrypt and shorten it automatically.</span>
+          ) : content && isHtmlContent(content) ? (
+            <span className="text-white">HTML content detected! NoteNext will render formatted preview automatically on share.</span>
           ) : !encryptNote ? (
             <span className="text-zinc-400">Raw Base64 mode active. Content is shared without client-side encryption.</span>
           ) : (

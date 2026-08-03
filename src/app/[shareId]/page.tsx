@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { 
   FileText, Copy, Download, Trash2, 
   EyeOff, Loader2, ListOrdered, WrapText, Lock, Key,
-  Pencil, Save, X
+  Pencil, Save, X, Eye, Code
 } from 'lucide-react';
 import { importKey, decryptData, encryptData } from '@/lib/crypto';
 import { highlightToLines, mapLanguage } from '@/lib/syntax';
@@ -14,6 +14,8 @@ import {
   isCreator as checkIsCreator, clearNoteToken, 
   getNoteToken, saveNoteToken 
 } from '@/lib/api';
+import { isHtmlContent, isMarkdownContent, sanitizeHtml, markdownToHtml } from '@/lib/renderer';
+
 
 const LANGUAGES = [
   { value: 'auto', label: 'Auto Detect' },
@@ -75,6 +77,7 @@ export default function ViewPastePage(props: PageProps) {
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'error' } | null>(null);
   const [isCreator, setIsCreator] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Editing States
   const [isEditing, setIsEditing] = useState(false);
@@ -167,6 +170,9 @@ export default function ViewPastePage(props: PageProps) {
             title: 'Shared Paste',
             language: 'auto',
           });
+          if (isHtmlContent(contentStr) || isMarkdownContent(contentStr, 'auto')) {
+            setShowPreview(true);
+          }
           setLoading(false);
         } else if (hexKey) {
           // Encrypted Mode with Key in URL
@@ -220,6 +226,9 @@ export default function ViewPastePage(props: PageProps) {
               title: noteTitle,
               language: noteLang,
             });
+            if (isHtmlContent(contentStr) || isMarkdownContent(contentStr, noteLang) || noteLang === 'html' || noteLang === 'markdown') {
+              setShowPreview(true);
+            }
             setLoading(false);
           }
         }
@@ -263,6 +272,9 @@ export default function ViewPastePage(props: PageProps) {
         title: noteTitle,
         language: noteLang,
       });
+      if (isHtmlContent(contentStr) || isMarkdownContent(contentStr, noteLang) || noteLang === 'html' || noteLang === 'markdown') {
+        setShowPreview(true);
+      }
       setPromptForKey(false);
       setError(null);
     } catch (e) {
@@ -637,6 +649,20 @@ export default function ViewPastePage(props: PageProps) {
                   <ListOrdered className="h-4 w-4" />
                 </button>
 
+                {/* Rendered Preview / Code View Toggle */}
+                <button
+                  onClick={() => setShowPreview(!showPreview)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition-colors cursor-pointer border ${
+                    showPreview 
+                      ? 'bg-[#ff9800] text-black border-[#ff9800]' 
+                      : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:text-white hover:border-zinc-500'
+                  }`}
+                  title={showPreview ? "Switch to Raw Code View" : "Switch to Rendered Preview"}
+                >
+                  {showPreview ? <Code className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  <span>{showPreview ? "RAW CODE" : "RENDERED"}</span>
+                </button>
+
                 {/* Font Size Select */}
                 <select
                   value={fontSize}
@@ -782,39 +808,59 @@ export default function ViewPastePage(props: PageProps) {
         </div>
       ) : (
         <main className="flex-1 w-full h-full relative overflow-auto bg-[#212121] py-4 selection:bg-[#ff9800]/30 select-text">
-          {/* Standard Syntax Highlighted Code Viewer */}
-          <div 
-            className="px-6 font-mono font-bold leading-6 overflow-x-auto"
-            style={{ fontSize: `${fontSize}px` }}
-          >
-            {codeLines.map((line, lineIdx) => (
-              <div key={lineIdx} className="flex select-text min-w-max hover:bg-zinc-800/10">
-                {/* Line number column */}
-                {showLineNumbers && (
-                  <span className="text-zinc-600 select-none text-right pr-6 w-12 flex-shrink-0 border-r border-zinc-800 mr-4">
-                    {lineIdx + 1}
-                  </span>
-                )}
-                
-                {/* Code line content */}
-                <span className={`flex-1 ${wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}>
-                  {line.length === 0 ? (
-                    // empty line spacer
-                    <br />
-                  ) : (
-                    line.map((token, tokenIdx) => (
-                      <span 
-                        key={tokenIdx} 
-                        className={token.type ? `token ${token.type}` : ''}
-                      >
-                        {token.content}
-                      </span>
-                    ))
+          {showPreview && decryptedData ? (
+            <div className="max-w-4xl mx-auto my-4 bg-[#1a1a1a] p-8 border border-zinc-800 rounded-lg shadow-xl select-text">
+              {isHtmlContent(decryptedData.content) || decryptedData.language === 'html' ? (
+                <div 
+                  className="notenext-rendered"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(decryptedData.content) }}
+                />
+              ) : isMarkdownContent(decryptedData.content, decryptedData.language) ? (
+                <div 
+                  className="notenext-rendered"
+                  dangerouslySetInnerHTML={{ __html: markdownToHtml(decryptedData.content) }}
+                />
+              ) : (
+                <div className="notenext-rendered whitespace-pre-wrap">
+                  {decryptedData.content}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Standard Syntax Highlighted Code Viewer */
+            <div 
+              className="px-6 font-mono font-bold leading-6 overflow-x-auto"
+              style={{ fontSize: `${fontSize}px` }}
+            >
+              {codeLines.map((line, lineIdx) => (
+                <div key={lineIdx} className="flex select-text min-w-max hover:bg-zinc-800/10">
+                  {/* Line number column */}
+                  {showLineNumbers && (
+                    <span className="text-zinc-600 select-none text-right pr-6 w-12 flex-shrink-0 border-r border-zinc-800 mr-4">
+                      {lineIdx + 1}
+                    </span>
                   )}
-                </span>
-              </div>
-            ))}
-          </div>
+                  
+                  {/* Code line content */}
+                  <span className={`flex-1 ${wrapLines ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}>
+                    {line.length === 0 ? (
+                      // empty line spacer
+                      <br />
+                    ) : (
+                      line.map((token, tokenIdx) => (
+                        <span 
+                          key={tokenIdx} 
+                          className={token.type ? `token ${token.type}` : ''}
+                        >
+                          {token.content}
+                        </span>
+                      ))
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </main>
       )}
 
